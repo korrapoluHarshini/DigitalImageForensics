@@ -1,0 +1,21 @@
+# Virtual environment
+venv/
+
+# Dataset
+datasets/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# IDE
+.vscode/
+.idea/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Generated result files
+results/figures/
+results/metrics/
+results/predictions/
