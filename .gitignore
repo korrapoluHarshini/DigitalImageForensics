@@ -19,3 +19,7 @@ __pycache__/
 results/figures/
 results/metrics/
 results/predictions/
+
+
+# Trained model weights
+*.pth
