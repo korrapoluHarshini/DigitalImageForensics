@@ -1,0 +1,151 @@
+
+# ==========================================
+# PYTHON
+# ==========================================
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ==========================================
+# VIRTUAL ENVIRONMENTS
+# ==========================================
+.venv/
+venv/
+env/
+mvss_venv/
+
+# ==========================================
+# IDE AND EDITORS
+# ==========================================
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ==========================================
+# MODEL CHECKPOINTS AND WEIGHTS
+# ==========================================
+ckpt/
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.h5
+*.keras
+*.weights
+
+# ==========================================
+# DATASETS AND DOWNLOADED ARCHIVES
+# ==========================================
+data/
+datasets/
+*.zip
+*.rar
+*.7z
+*.tar
+*.gz
+
+# ==========================================
+# GENERATED RESULTS AND CACHES
+# ==========================================
+results/
+*.npy
+*.npz
+*.pkl
+*.pickle
+*.cache
+
+# ==========================================
+# LOGS AND TEMPORARY FILES
+# ==========================================
+*.log
+*.tmp
+*.bak
+
+# ==========================================
+# ENVIRONMENT VARIABLES AND SECRETS
+# ==========================================
+.env
+.env.*
+!.env.example
+
+# ==========================================
+# JUPYTER NOTEBOOK CHECKPOINTS
+# ==========================================
+.ipynb_checkpoints/
+
+# ==========================================
+# LATEX AUXILIARY FILES
+# ==========================================
+*.aux
+*.lof
+*.log
+*.lot
+*.fls
+*.out
+*.toc
+*.fmt
+*.fot
+*.cb
+*.cb2
+.*.lb
+*.dvi
+*.xdv
+*-converted-to.*
+.pdf
+*.bbl
+*.bcf
+*.blg
+*-blx.aux
+*-blx.bib
+*.run.xml
+*.fdb_latexmk
+*.synctex*
+*.pdfsync
+*.alg
+*.loa
+*.thm
+*.spl
+*.ent
+*.gls
+*.glo
+*.glg
+*.acn
+*.acr
+*.idx
+*.ilg
+*.ind
+*.ist
+*.nav
+*.snm
+*.vrb
+*.tikz
+*.pyg
+_minted*/
+*.upa
+*.upb
+*.tdo
+*.xdy
+*.xyc
+*.ttt
+*.fff
+*.backup
+.texpadtmp
+TSWLatexianTemp*
+*-tags.tex
+*.sta
+main.pdf
+
+# ==========================================
+# PROJECT-SPECIFIC
+# ==========================================
+# Runtime application history
+results/app/
+
+# Large downloaded project archive
+MVSS-Net-colab.zip

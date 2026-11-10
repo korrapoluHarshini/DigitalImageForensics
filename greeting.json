@@ -1,0 +1,127 @@
+{
+  "info": {
+    "id": "ses_e457046c1ffeskwDOmIRs3EbMy",
+    "projectID": "c0c39f6e1ce0541ffef390131e1583905b1c8c50",
+    "agent": "build",
+    "model": {
+      "id": "iceman-free",
+      "providerID": "opencode",
+      "variant": "default"
+    },
+    "cost": 0,
+    "tokens": {
+      "input": 1009,
+      "output": 35,
+      "reasoning": 28,
+      "cache": {
+        "read": 4096,
+        "write": 0
+      }
+    },
+    "outcome": "succeeded",
+    "time": {
+      "created": 1794131343742,
+      "updated": 1794131346681,
+      "busy": 1794131343843,
+      "idle": 1794131346698,
+      "viewed": 1794131346698
+    },
+    "title": "Greeting",
+    "permissions": [
+      {
+        "action": "browser",
+        "resource": "*",
+        "effect": "allow"
+      },
+      {
+        "action": "skill",
+        "resource": "browser",
+        "effect": "allow"
+      }
+    ],
+    "location": {
+      "directory": "C:\\Users\\harsh\\OneDrive\\Documents\\Default Project"
+    }
+  },
+  "messages": [
+    {
+      "id": "msg_1ba8fb93a0013wXdTlOgf0X2vQ",
+      "metadata": {
+        "displayText": "hi",
+        "comments": [],
+        "attachments": [],
+        "agent": "build",
+        "model": {
+          "modelID": "iceman-free",
+          "providerID": "opencode"
+        }
+      },
+      "time": {
+        "created": 1794131343880
+      },
+      "text": "hi",
+      "files": [],
+      "agents": [],
+      "type": "user"
+    },
+    {
+      "id": "msg_1ba8fba39001EpX4yx5fIXG94t",
+      "time": {
+        "created": 1794131343968,
+        "streamed": 1794131346671,
+        "completed": 1794131346681
+      },
+      "type": "assistant",
+      "agent": "build",
+      "model": {
+        "id": "iceman-free",
+        "providerID": "opencode",
+        "variant": "default"
+      },
+      "content": [
+        {
+          "type": "reasoning",
+          "text": "**Responding warmly**\n\nThe user just said \"hi,\" so I’ll keep it simple and friendly. I’ll respond warmly, maybe something like \"Hey there! How can I help with your project today?\" That should be enough to keep the conversation going without overcomplicating things. I want to make sure I’m approachable and ready to assist, but no need to go overboard just yet.",
+          "native": {
+            "reasoningField": "reasoning_content",
+            "reasoningDetails": [
+              {
+                "type": "reasoning.encrypted",
+                "data": "o2d2ZXJzaW9uAW5lbmNyeXB0ZWRfZGVrc4GiZmtla19pZHhAYjU4ZGRlMjkwNDZjYTU5NjM5MTBmM2JmYjUwYTlhZDRhMGVkYTNjMmNjZDg3MGYzMjMxNTE3ZDA3YzlmZTU3Nm1lbmNyeXB0ZWRfZGVrWQEAeYSJIDq0a1IdvVydmg9Si3TGIO8arMtbXV11dajC16vcvEKI-_Nkn3ftEncw3MMAGUg2zA2mqmlJn7QFlU5iMIYblR1FgJYlh-_8MjhEvzM7aEmzoWYZBl6fS_nJlqy_F-Fnb155TNoubsIH8kAeiYW9BcNtA8EzcAGnriEtNALqfEfz7GRD3w7F7xNZdafX9irB1gESiA-14MvNH8OPuMk3hu3iG9htjiruvE1GvlmJmOQ0E9C2HA_HPA1Qz7WZbVmR23Ks4rL8C-FWPyqvTSsRGeaFn0_QDl-iVwfbZhdTT8F3r9mHBum13hjtwKySYZg41c9RiGPGcUkUNT5WunFlbmNyeXB0ZWRfY29udGVudFj4Z0FBQUFBQnE4RVdScjJUV0p5SjRocTdEQ2d1SXpYZDMyUzBqWlBzTnBaekNsMzFMMkVIc1JIdjFuOXdsdnRTZDNlcHhpUlpUbXdoOEk2d0lRWFJKamtzQ1dvaHJlYWFsM2pOeFI2UUV6ellaXzk5RFctS1J6eW9TbzN1T19xbDdRcGVGTExmMGxMVzdvcmxUbzZTYlRiMTd6QkI5c3d4elQ4NmJISW9RaDRSU3Nrd0Y1NENaQzlXT3A4RjdEUnpIVDVUcWJpVTdMRG9BbktSaWlYcTR6blo1OGpfWGZaTTZMUGt3SkRuTnJZQzg0Y0NYRUw1SFdKRT0=",
+                "format": "nested-reasoning-summary"
+              }
+            ]
+          },
+          "time": {
+            "created": 1794131345842,
+            "completed": 1794131346649
+          }
+        },
+        {
+          "type": "text",
+          "text": "Hi! How can I help you with your project today?"
+        }
+      ],
+      "finish": "stop",
+      "rawFinish": "stop",
+      "cost": 0,
+      "tokens": {
+        "input": 568,
+        "output": 23,
+        "reasoning": 27,
+        "cache": {
+          "read": 4096,
+          "write": 0
+        }
+      }
+    },
+    {
+      "id": "msg_1ba8fc50a001aNwAq024RErM7w",
+      "time": {
+        "created": 1794131346698
+      },
+      "type": "idle",
+      "outcome": "succeeded"
+    }
+  ]
+}

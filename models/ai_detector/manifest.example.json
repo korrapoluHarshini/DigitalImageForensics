@@ -1,0 +1,9 @@
+{
+  "kind": "torchscript",
+  "path": "detector.ts",
+  "input_size": 224,
+  "mean": [0.485, 0.456, 0.406],
+  "std": [0.229, 0.224, 0.225],
+  "class_names": ["real", "ai_generated"],
+  "ai_class_index": 1
+}
