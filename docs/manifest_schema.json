@@ -1,0 +1,151 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Digital Image Forensics unified dataset manifest",
+  "type": "object",
+  "required": [
+    "sample_id",
+    "dataset",
+    "source_group",
+    "split",
+    "class_name",
+    "image_path",
+    "mask_path",
+    "pair_id",
+    "group_id",
+    "manipulation_type",
+    "device_make",
+    "device_model",
+    "capture_type",
+    "width",
+    "height",
+    "format",
+    "mask_available",
+    "mask_type",
+    "mask_quality",
+    "license",
+    "provenance_url",
+    "sha256",
+    "phash",
+    "notes"
+  ],
+  "properties": {
+    "sample_id": {
+      "type": "string"
+    },
+    "dataset": {
+      "type": "string"
+    },
+    "source_group": {
+      "type": "string",
+      "enum": [
+        "dslr_mirrorless",
+        "android",
+        "iphone",
+        "other_mobile",
+        "unknown"
+      ]
+    },
+    "split": {
+      "type": "string",
+      "enum": [
+        "train",
+        "validation",
+        "test",
+        "unassigned"
+      ]
+    },
+    "class_name": {
+      "type": "string",
+      "enum": [
+        "Authentic",
+        "Tampered",
+        "Unknown"
+      ]
+    },
+    "image_path": {
+      "type": "string"
+    },
+    "mask_path": {
+      "type": "string"
+    },
+    "pair_id": {
+      "type": "string"
+    },
+    "group_id": {
+      "type": "string"
+    },
+    "manipulation_type": {
+      "type": "string"
+    },
+    "device_make": {
+      "type": "string"
+    },
+    "device_model": {
+      "type": "string"
+    },
+    "capture_type": {
+      "type": "string"
+    },
+    "width": {
+      "type": [
+        "integer",
+        "string"
+      ]
+    },
+    "height": {
+      "type": [
+        "integer",
+        "string"
+      ]
+    },
+    "format": {
+      "type": "string"
+    },
+    "mask_available": {
+      "type": "boolean"
+    },
+    "mask_type": {
+      "type": "string"
+    },
+    "mask_quality": {
+      "type": "string"
+    },
+    "license": {
+      "type": "string"
+    },
+    "provenance_url": {
+      "type": "string"
+    },
+    "sha256": {
+      "type": "string"
+    },
+    "phash": {
+      "type": "string"
+    },
+    "notes": {
+      "type": "string"
+    },
+    "dhash": {
+      "type": "string"
+    },
+    "decoded_sha256": {
+      "type": "string"
+    },
+    "file_size": {
+      "type": [
+        "integer",
+        "string"
+      ]
+    },
+    "validation_status": {
+      "type": "string"
+    },
+    "validation_errors": {
+      "type": "string"
+    },
+    "pixel_training_eligible": {
+      "type": "boolean"
+    }
+  },
+  "additionalProperties": false
+}
