@@ -5,13 +5,17 @@ into one dashboard:
 
 | Module | Purpose | Status |
 | --- | --- | --- |
-| 1. Image Manipulation | Pixel-level forgery localization with MVSS-Net (ResNet-50, CASIA2.0 checkpoint) | Ready |
-| 2. AI-Generated Image | Real / AI-generated / uncertain classification through a pluggable detector | Integration placeholder — no weights bundled |
-| 3. Chat Screenshot | Visual anomaly screening plus OCR transcription for messaging screenshots | Ready (screening only) |
+| 1. Image Manipulation | Pixel-level forgery localization with MVSS-Net (ResNet-50, CASIA2.0 checkpoint) | Ready (cross-split leakage quantified; leakage-free retraining harness ready, GPU run pending) |
+| 2. AI-Generated Image | Real / AI-generated / uncertain classification through a pluggable detector | Integration placeholder — no weights bundled; training harness ready |
+| 3. Chat Screenshot | Visual anomaly screening, OCR transcription and reference comparison | Ready (screening only; reference comparison for message-level differences) |
 
 The application is an academic decision-support demo. It does **not** prove that
 an image is authentic or fake, and it does not verify chat messages against
-original records.
+original records unless a trusted reference screenshot is supplied.
+
+Current measured results, including negative findings, are consolidated in
+[`EVALUATION_REPORT.md`](EVALUATION_REPORT.md). GPU training and dataset
+acquisition steps are in [`COLAB_RUNBOOK.md`](COLAB_RUNBOOK.md).
 
 ---
 
@@ -41,12 +45,16 @@ Module 1 does not need the dataset at runtime. The evaluation scripts and the
 About page read the dataset through `DIGITAL_FORENSICS_DATA_ROOT`:
 
 ```powershell
-$env:DIGITAL_FORENSICS_DATA_ROOT = "C:\Users\harsh\Documents\DigitalImageForensics"
+$env:DIGITAL_FORENSICS_DATA_ROOT = "D:\ImageForensics_Datasets"
 ```
 
-The default already points at that folder when it exists. The expected layout is
+The preferred root is `D:\ImageForensics_Datasets`; the previous
+`C:\Users\harsh\Documents\DigitalImageForensics` folder is used automatically
+when the new variable is unset but the legacy folder exists. The CASIA layout is
 `datasets/CASIA2.0_revised/{Au,Tp}` and `datasets/CASIA2.0_Groundtruth`, with
 `experiments/dataset_split.csv` and `experiments/localization_pairs.csv`.
+Generated evaluation-only data (for example `chat_synthetic_v1`) lives under the
+same configurable root and is never committed.
 
 ### Optional environment variables
 
@@ -148,10 +156,22 @@ learned class.
 * Suspicious-region highlighting and heatmap
 * OCR lines and visual blocks (EasyOCR, Tesseract fallback)
 * A region↔text-overlap table (co-location cue only)
-* Downloadable report, highlighted image, heatmap, mask and transcript
+* **Optional reference comparison**: upload the genuine, unedited screenshot;
+  the app aligns the two images, shows a change heatmap, side-by-side view,
+  binary change mask and line-level OCR differences
+* Downloadable report, highlighted image, heatmap, mask, comparison image,
+  change mask and transcript
 
-OCR is used **for readability only**. It never counts as evidence of tampering,
-and the module never claims to recover or verify the original conversation.
+OCR is used **for readability only**. Without a reference, the module never
+claims to recover or verify the original conversation. With a reference it
+reports *visible* pixel and text differences relative to that reference, and
+still cannot establish which screenshot is the original.
+
+Measured on eight controlled synthetic conversations, this out-of-domain visual
+screening flagged every authentic screenshot (false-positive rate 1.0). The
+reference comparison recovered all ten injected text edits with no differences
+on identical pairs. The page states both facts; see
+[`EVALUATION_REPORT.md`](EVALUATION_REPORT.md) for protocol and caveats.
 
 ### Analysis History
 Metadata-only log (UTC time, module, image-level result, pixel-level signal,
@@ -184,6 +204,7 @@ modules/
   chat_tampering/                   Module 3: screenshot pipeline
     inference.py                    visual screening + OCR association
     ocr.py                          EasyOCR/Tesseract abstraction, line grouping
+    reference.py                    reference alignment, pixel/text comparison
     preprocessing.py                screenshot sizing
     visualization.py                OCR boxes and combined view
 utils/
@@ -192,6 +213,9 @@ utils/
   image_utils.py                    decode, convert, encode, fingerprint
   metrics.py                        pixel/image/classification metrics
   reporting.py                      metadata history and text reports
+training/
+  train_ai_detector.py              Module 2 training/export harness (TorchScript)
+  train_mvss_groupaware.py          Module 1 leakage-free retraining (resumable)
 evaluation/
   select_threshold_module1.py       validation-only localization threshold selection
   select_image_threshold_module1.py validation-only image-level threshold + band
@@ -201,13 +225,21 @@ evaluation/
   evaluate_module1.py               localization + authentic FPR
   evaluate_module2.py               AI detector metrics
   evaluate_module3.py               chat localization, FPR, OCR quality
+  build_synthetic_chat_dataset.py   reproducible synthetic chat-screenshot data
+  evaluate_chat_reference.py        reference-comparison metrics
+  evaluate_chat_degradation.py      JPEG/rescale stress test for reference comparison
+  evaluate_groupaware_checkpoint.py independent leakage-free test evaluation
+  analyze_casia_leakage.py          leakage impact + group-aware experimental split
 models/
   ai_detector/                      manifest + integration contract
   chat_detector/                    notes for a future dedicated model
-tests/                              pytest suite (83 tests)
+tests/                              pytest suite (150 tests)
+notebooks/colab_workflow.ipynb      Colab GPU workflow (setup, train, evaluate)
 results/evaluation/                 generated metrics artifacts
 requirements-app.txt                runtime dependencies
 docs/APPLICATION.md                 this document
+docs/EVALUATION_REPORT.md           consolidated measured results and caveats
+docs/COLAB_RUNBOOK.md               GPU training, resume and dataset-licence steps
 ```
 
 Every module returns a structured dataclass and catches its own failures. A
@@ -348,6 +380,26 @@ a replacement for the test-split metrics.
 
 Artifact: `results/evaluation/module1_test_metrics.json`.
 
+**Leakage caveat.** The Phase 0 duplicate audit shows that 687 of 768 test
+tampered images (89.45%) belong to duplicate components linked across the
+historical splits. A clean subset of only 81 images gives micro IoU 0.7498 but
+mean image IoU 0.7796 and tampered recall 0.9877 at 0.42. The clean subset is
+small and biased, so these numbers are diagnostic, not a leakage-free benchmark.
+
+```powershell
+.\mvss_venv\Scripts\python.exe evaluation\analyze_casia_leakage.py
+```
+
+This writes `results/evaluation/casia2_leakage_impact.json` and a separate
+leakage-free experimental split `results/manifests/casia2_groupaware_split.csv`
+(8,831 train / 1,694 validation / 2,089 test, 0 components spanning splits). The
+original CASIA split files are untouched; retraining on the group-aware split is
+required before quoting leakage-free test metrics. The retraining harness
+(`training/train_mvss_groupaware.py`) and independent evaluator
+(`evaluation/evaluate_groupaware_checkpoint.py`) are implemented and
+smoke-verified on CPU; no group-aware test metrics exist yet. Do not quote the
+old test metrics as leakage-free.
+
 ### Module 1 image-level estimate
 
 ```powershell
@@ -369,31 +421,78 @@ tighter estimate and report the sample size.
 ### Module 2
 
 There is no labelled AI-image dataset in this project and no bundled detector, so
-no metrics are reported. After integrating a detector and supplying folders:
+no metrics are reported. The training/export harness is implemented and tested
+structurally:
 
 ```powershell
-.\mvss_venv\Scripts\python.exe evaluation\evaluate_module2.py `
-  --real-dir path\to\real --ai-dir path\to\ai
+.\mvss_venv\Scripts\python.exe training\train_ai_detector.py --help
 ```
 
-The script reports accuracy, macro precision/recall/F1, the confusion matrix,
-uncertain rate and coverage, grouped by generator.
+It supports `small_cnn`, `efficientnet_b0`, `resnet18`, `resnet50` and
+`convnext_tiny`, deterministic splits, held-out generators, resume and early
+stopping, and exports TorchScript plus an app-compatible `manifest.json`.
+`tests/test_module2_training.py` verifies the split, export and
+`load_backend` contract on a tiny synthetic dataset.
+
+Real training is blocked: this machine is CPU-only and no dataset has been
+downloaded. GenImage (CC BY-NC-SA 4.0, academic/non-commercial, >1M images) and
+Synthbuster (12.37 GB, CC BY-NC-SA 4.0, 9 generators) were verified as available
+on 2026-11-13, but both require explicit approval because of size/licence, and
+Synthbuster excludes the real RAISE-1k images. No accuracy or cross-generator
+claim is made. Once an approved dataset is available (see
+[`COLAB_RUNBOOK.md`](COLAB_RUNBOOK.md) §4):
+
+```powershell
+.\mvss_venv\Scripts\python.exe training\train_ai_detector.py `
+  --real-dir path\to\real --ai-dir path\to\ai `
+  --output-dir experiments\module2\run_v1 `
+  --backbone efficientnet_b0 --epochs 20 `
+  --holdout-generators gen_holdout_a,gen_holdout_b
+
+.\mvss_venv\Scripts\python.exe evaluation\evaluate_module2.py `
+  --real-dir path\to\real --ai-dir path\to\ai `
+  --manifest experiments\module2\run_v1\manifest.json
+```
+
+The evaluator reports accuracy, macro precision/recall/F1, the confusion matrix,
+uncertain rate and coverage, grouped by generator. Report held-out generators
+separately from generators seen in training.
 
 ### Module 3
 
-Module 3 requires a labelled chat-screenshot dataset with masks; none is present,
-so no metrics are reported. Layout and command:
+Evaluation uses a locally generated, privacy-safe synthetic dataset
+(`chat_synthetic_v1`): 8 fictional conversations in three themes, 8 authentic
+and 8 edited screenshots, 10 injected edits across 5 categories, exact masks and
+reference transcripts. All rows are in the `test` split.
 
 ```powershell
-.\mvss_venv\Scripts\python.exe evaluation\evaluate_module3.py `
-  --manipulated-dir path\to\manipulated `
-  --masks-dir path\to\masks `
-  --authentic-dir path\to\authentic `
-  --ocr-references path\to\ocr_refs
+.\mvss_venv\Scripts\python.exe evaluation\build_synthetic_chat_dataset.py `
+  --root D:\ImageForensics_Datasets\chat_synthetic_v1 --conversations 8
 ```
 
-It reports localization IoU/precision/recall/F1, an authentic FPR estimate and
-OCR character similarity where reference transcripts exist.
+**Without a reference** (`evaluation/evaluate_module3.py`): localization global
+IoU **0.0**, tampered recall 1.0 but authentic FPR **1.0 (8/8)**, OCR mean
+character similarity 0.7722. MVSS-Net is out of domain on rendered screenshots
+and the page discloses this.
+
+**With a trusted reference** (`evaluation/evaluate_chat_reference.py`): text
+change precision/recall **1.0 / 1.0** (10/10), region recall **1.0**, pixel IoU
+0.1803, identical authentic pairs with any difference **0/8** (FPR 0.0),
+alignment mismatch rate 0.0.
+
+Low pixel IoU is expected: ground-truth masks mark whole edited text boxes,
+whereas predicted pixels mark only glyphs that changed. Region recall is the
+meaningful measure. These are synthetic results and do not establish real
+messaging-app performance; a reference comparison also cannot establish which
+screenshot is the original. Full protocol and numbers:
+[`EVALUATION_REPORT.md`](EVALUATION_REPORT.md).
+
+**Degradation stress test** (`evaluation/evaluate_chat_degradation.py`): text
+recall stays 1.0 at suspect JPEG q85/q60, falls to 0.9 at q40 and 0.7 after a 50%
+rescale; region recall stays 1.0 and authentic-pair FPR stays 0.0. Text precision
+collapses under one-sided JPEG (0.34 at q85, 0.28 at q60) because compression
+noise creates spurious OCR-difference fragments. These are synthetic renders and
+must not be read as real-app robustness.
 
 ---
 
@@ -403,12 +502,14 @@ OCR character similarity where reference transcripts exist.
 .\mvss_venv\Scripts\python.exe -m pytest tests -q
 ```
 
-83 tests cover upload validation, preprocessing parity with
+150 tests cover upload validation, preprocessing parity with
 `common.transforms.direct_val`, region extraction, image-level decision and
 uncertainty logic, raw-vs-retained area diagnostics, explanation text, label
 consistency, metrics, module failure isolation, manifest handling, a real
-TorchScript backend, OCR line grouping and all six Streamlit pages via
-`AppTest`.
+TorchScript backend, the Module 2 training/export harness, the Module 1
+group-aware training/evaluation pipeline, OCR line grouping, chat reference
+comparison, chat degradation helpers, the synthetic chat dataset and all six
+Streamlit pages via `AppTest`.
 
 ---
 
