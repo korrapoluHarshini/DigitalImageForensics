@@ -133,6 +133,38 @@ def record_from_chat(result, fingerprint: str) -> AnalysisRecord:
                 if manipulation is not None
                 else None
             ),
+            "reference_supplied": result.reference_comparison is not None,
+            "reference_finding": (
+                result.reference_comparison.finding
+                if result.reference_comparison is not None
+                else None
+            ),
+            "reference_changed_regions": (
+                len(result.reference_comparison.regions)
+                if result.reference_comparison is not None
+                else 0
+            ),
+            "reference_text_changes": (
+                len(result.reference_comparison.text_changes)
+                if result.reference_comparison is not None
+                else 0
+            ),
+            "reference_change_kinds": (
+                sorted({change.kind for change in result.reference_comparison.text_changes})
+                if result.reference_comparison is not None
+                else []
+            ),
+            "reference_alignment_correlation": (
+                _round(result.reference_comparison.alignment.correlation)
+                if result.reference_comparison is not None
+                and result.reference_comparison.alignment is not None
+                else None
+            ),
+            "reference_changed_pixel_ratio": (
+                _round(result.reference_comparison.changed_pixel_ratio, 8)
+                if result.reference_comparison is not None
+                else None
+            ),
         },
     )
 
@@ -299,6 +331,30 @@ def build_chat_report(result, fingerprint: str) -> str:
 
     lines += ["", "WARNINGS"]
     lines += [f"  - {warning}" for warning in result.warnings]
+    if result.reference_comparison is not None:
+        comparison = result.reference_comparison
+        alignment = comparison.alignment
+        lines += ["", "REFERENCE COMPARISON"]
+        if alignment is not None:
+            lines += [
+                f"  Alignment: {alignment.method} "
+                f"(correlation {alignment.correlation:.3f}, "
+                f"reference resized: {'yes' if alignment.resized_reference else 'no'})",
+            ]
+        lines += [
+            f"  Result: {comparison.finding.replace('_', ' ').title()}",
+            f"  Changed pixels: {comparison.changed_pixels:,} "
+            f"({comparison.changed_pixel_ratio * 100:.4f}% of the screen)",
+            f"  Changed regions: {len(comparison.regions)}",
+            f"  Text differences: {len(comparison.text_changes)}",
+        ]
+        if comparison.text_changes:
+            kinds = sorted({change.kind.replace("_", " ") for change in comparison.text_changes})
+            lines.append(f"  Change categories: {', '.join(kinds)}")
+        lines.append(
+            "  Recognised text is intentionally omitted from this report; "
+            "review transcripts in the application."
+        )
     lines += ["", "LIMITATIONS"]
     lines += [f"  - {item}" for item in result.limitations]
     lines += [

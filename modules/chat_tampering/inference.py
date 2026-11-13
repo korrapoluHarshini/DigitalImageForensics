@@ -21,6 +21,7 @@ from utils.image_utils import ensure_rgb_uint8
 
 from .ocr import OCRResult, extract_text
 from .preprocessing import prepare_chat_image
+from .reference import ReferenceComparison, compare_chat_screenshot
 from .visualization import combine_forensic_and_ocr, draw_ocr_blocks
 
 
@@ -60,6 +61,7 @@ class ChatTamperingResult:
     annotated: np.ndarray | None = None
     ocr_visual: np.ndarray | None = None
     combined_visual: np.ndarray | None = None
+    reference_comparison: ReferenceComparison | None = None
     warnings: list[str] = field(default_factory=list)
     limitations: list[str] = field(default_factory=list)
     error_message: str | None = None
@@ -74,6 +76,11 @@ class ChatTamperingResult:
             "regions": [region.as_dict() for region in self.regions],
             "region_text_matches": [match.as_dict() for match in self.region_matches],
             "ocr": self.ocr.as_dict(include_text=False) if self.ocr else None,
+            "reference_comparison": (
+                self.reference_comparison.as_dict(include_text=False)
+                if self.reference_comparison
+                else None
+            ),
             "elapsed_seconds": round(self.elapsed_seconds, 2),
             "warnings": list(self.warnings),
             "limitations": list(self.limitations),
@@ -124,10 +131,15 @@ def _chat_limitations() -> list[str]:
     return [
         "MVSS-Net was trained on CASIA2.0 photographs, not on messaging-app screenshots; "
         "visual scores are out-of-domain screening signals.",
+        "On the controlled synthetic evaluation set, visual screening flagged every "
+        "authentic screenshot (false-positive rate 1.0) and localisation IoU was 0.0. "
+        "Do not treat a highlighted region as evidence of tampering.",
         "Chat apps re-render text with subpixel antialiasing and compression, which can "
         "produce false positives or hide real edits.",
         "The analysis cannot recover the original message or compare it with a trusted "
         "chat record.",
+        "Without a trusted original screenshot the app cannot verify any message, amount "
+        "or date; use the reference comparison for message-level differences.",
         "OCR text is shown for readability only; unusual wording is never treated as tampering.",
         "Regions overlapping text indicate co-location, not proof that the text was edited.",
         "Stickers, emoji, images and non-Latin scripts are outside the validated scope.",
@@ -142,6 +154,7 @@ def detect_chat_tampering(
     max_tiles: int = 12,
     run_ocr: bool = True,
     predictor: MvssNetPredictor | None = None,
+    reference_rgb: np.ndarray | None = None,
 ) -> ChatTamperingResult:
     """Screen a chat screenshot for visual anomalies and extract visible text.
 
@@ -152,6 +165,10 @@ def detect_chat_tampering(
         details better than squashing the screenshot to 512x512.
     run_ocr:
         When False, only visual analysis runs.
+    reference_rgb:
+        Optional trusted original screenshot.  When supplied, the two images are
+        aligned and visible pixel/text differences are reported.  Without it no
+        message-level claim is made.
     """
     started = time.perf_counter()
     applied_threshold = float(settings.manipulation_threshold if threshold is None else threshold)
@@ -185,8 +202,9 @@ def detect_chat_tampering(
 
     warnings: list[str] = [
         "This is a visual screening result for a chat screenshot, not message-level verification.",
-        "No original chat record or reference screenshot was used for comparison.",
     ]
+    if reference_rgb is None:
+        warnings.append("No original chat record or reference screenshot was used for comparison.")
     if manipulation.status == "ok":
         warnings.extend(manipulation.warnings)
     else:
@@ -226,6 +244,28 @@ def detect_chat_tampering(
         status = "partial" if (ocr is not None and ocr.available) else "error"
         error_message = manipulation.error_message
 
+    reference_comparison: ReferenceComparison | None = None
+    if reference_rgb is not None:
+        try:
+            reference_prepared, _reference_scale = prepare_chat_image(
+                ensure_rgb_uint8(reference_rgb),
+                max_side=settings.max_analysis_side,
+            )
+            reference_comparison = compare_chat_screenshot(
+                prepared,
+                reference_prepared,
+                suspect_ocr=ocr if (ocr is not None and ocr.available) else None,
+                run_ocr=run_ocr,
+            )
+        except Exception as exc:  # noqa: BLE001 - reference is optional
+            warnings.append(f"The reference screenshot could not be compared: {exc}")
+        else:
+            warnings.append(
+                "A reference screenshot was supplied. Reported differences are relative to "
+                "that reference; they do not establish which screenshot is the original."
+            )
+            warnings.extend(reference_comparison.warnings)
+
     return ChatTamperingResult(
         status=status,
         finding=finding,
@@ -243,6 +283,7 @@ def detect_chat_tampering(
         annotated=manipulation.annotated,
         ocr_visual=ocr_visual,
         combined_visual=combined_visual,
+        reference_comparison=reference_comparison,
         warnings=warnings,
         limitations=_chat_limitations(),
         error_message=error_message,

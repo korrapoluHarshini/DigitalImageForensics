@@ -972,17 +972,117 @@ def render_ai_page() -> None:
 # Page: Module 3
 # ----------------------------------------------------------------------
 
+def render_reference_comparison(comparison) -> None:
+    """Render an aligned reference-vs-suspect comparison (Module 3)."""
+    st.caption(
+        "Differences are relative to the supplied reference. They do not establish which "
+        "screenshot is the original, who edited it, or when."
+    )
+    kind = {
+        "reference_differences_detected": "warn",
+        "reference_no_differences_detected": "ok",
+        "reference_mismatch": "bad",
+    }.get(comparison.finding, "neutral")
+    st.markdown(
+        badge(comparison.finding.replace("_", " ").title(), kind), unsafe_allow_html=True
+    )
+    if comparison.status == "reference_invalid":
+        st.error(comparison.error_message or "The reference screenshot could not be analysed.")
+        return
+    if comparison.status == "reference_mismatch":
+        st.warning(
+            "The screenshots could not be reliably aligned or differ almost everywhere. "
+            "This usually means a different screen, theme, resolution or chat state — "
+            "individual changes cannot be attributed."
+        )
+
+    alignment = comparison.alignment
+    metric_columns = st.columns(4)
+    metric_columns[0].metric(
+        "Alignment correlation",
+        f"{alignment.correlation:.3f}" if alignment is not None else "—",
+    )
+    metric_columns[1].metric(
+        "Changed pixels", f"{comparison.changed_pixel_ratio * 100:.4f}%"
+    )
+    metric_columns[2].metric("Changed regions", str(len(comparison.regions)))
+    metric_columns[3].metric("Text differences", str(len(comparison.text_changes)))
+
+    if comparison.side_by_side is not None:
+        st.image(
+            comparison.side_by_side,
+            caption=(
+                "Reference (left) and suspect (right). P = pixel-change region, "
+                "D = OCR text difference."
+            ),
+            width="stretch",
+        )
+    visual_columns = st.columns(3, gap="medium")
+    if comparison.heatmap is not None:
+        with visual_columns[0]:
+            st.image(comparison.heatmap, caption="Change heatmap", width="stretch")
+    if comparison.overlay is not None:
+        with visual_columns[1]:
+            st.image(comparison.overlay, caption="Changes on suspect", width="stretch")
+    if comparison.change_mask is not None:
+        with visual_columns[2]:
+            st.image(comparison.change_mask, caption="Binary change mask", width="stretch")
+
+    if comparison.text_changes:
+        rows = [
+            {
+                "#": change.change_id,
+                "Category": change.kind.replace("_", " ").title(),
+                "Where": change.location.title(),
+                "Confidence": f"{change.confidence * 100:.0f}%",
+                "Reference text": change.reference_text or "—",
+                "Suspect text": change.suspect_text or "—",
+            }
+            for change in comparison.text_changes
+        ]
+        st.markdown("**Detected text differences (review cues, not proof)**")
+        st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+        st.caption(
+            "These rows compare OCR transcripts. Recognition errors can appear as "
+            "differences. Check the highlighted pixel regions before drawing a conclusion."
+        )
+    else:
+        st.info(
+            "No line-level OCR difference was detected. OCR can miss stylised, low-contrast "
+            "or non-Latin text, so this is not proof that the screenshots are identical."
+        )
+
+    if comparison.reference_ocr is not None and comparison.reference_ocr.available:
+        with st.expander("Reference transcript (not stored)"):
+            st.text_area(
+                "Reference OCR text",
+                value=comparison.reference_ocr.full_text,
+                height=180,
+                key="reference_transcript",
+            )
+
+    st.markdown(
+        '<div class="df-note">Re-rendering, theme changes, resizing and recompression can '
+        "produce differences that are not tampering. A reference comparison is a strong "
+        "review aid, not forensic proof of intent.</div>",
+        unsafe_allow_html=True,
+    )
+
+
 def render_chat_page() -> None:
     st.markdown("## Chat Screenshot Analysis")
     st.caption(
         "Screens a messaging screenshot for possible visual manipulation and "
-        "transcribes visible text. It does not verify messages against the original "
-        "chat record."
+        "transcribes visible text. Message-level verification is only possible against "
+        "a trusted original screenshot."
     )
     st.markdown(
         '<div class="df-note"><b>Scope:</b> visual screening only. A highlighted area '
         "means the forensic model found an anomalous region; it does not prove that a "
-        "message was edited, and OCR text is never used as evidence of tampering.</div>",
+        "message was edited, and OCR text is never used as evidence of tampering. In the "
+        "controlled synthetic evaluation, this out-of-domain screening flagged every "
+        "authentic screenshot (false-positive rate 1.0), so treat it as a triage aid. Add "
+        "an original reference screenshot below to compare visible differences.</div>",
         unsafe_allow_html=True,
     )
 
@@ -991,6 +1091,20 @@ def render_chat_page() -> None:
         "Upload a chat screenshot",
         "PNG or JPG screenshots from a messaging app. Avoid uploading sensitive conversations.",
     )
+
+    reference_rgb = None
+    reference_fingerprint = None
+    with st.expander("Optional: compare against an original screenshot", expanded=False):
+        st.caption(
+            "Supply the genuine, unedited screenshot only. This is the only setting in "
+            "which the app can report that specific messages or amounts differ from a "
+            "reference. The reference is processed in memory and is never saved."
+        )
+        reference_rgb, reference_fingerprint, _reference_info = upload_image(
+            "upload_chat_reference",
+            "Upload the trusted original screenshot",
+            "Same chat, same layout and, ideally, the same resolution as the screenshot above.",
+        )
 
     with st.expander("Analysis options"):
         run_ocr = st.checkbox(
@@ -1013,7 +1127,14 @@ def render_chat_page() -> None:
     )
 
     if rgb is not None and analyze:
-        key = ("chat", fingerprint, round(_threshold(), 3), bool(detailed), bool(run_ocr))
+        key = (
+            "chat",
+            fingerprint,
+            reference_fingerprint,
+            round(_threshold(), 3),
+            bool(detailed),
+            bool(run_ocr),
+        )
         result = _cache_get(key)
         if result is None:
             with st.spinner("Running visual screening and OCR… this can take 20–60 s on CPU."):
@@ -1024,6 +1145,7 @@ def render_chat_page() -> None:
                     max_tiles=12,
                     run_ocr=run_ocr,
                     predictor=cached_predictor(),
+                    reference_rgb=reference_rgb,
                 )
                 _cache_put(key, result)
                 if result.status in {"ok", "partial"}:
@@ -1031,11 +1153,17 @@ def render_chat_page() -> None:
                     append_history(record)
                     _append_session_history({"timestamp": record.timestamp, "module": record.module,
                                              "finding": record.finding, "score": record.score})
-        st.session_state["last_chat"] = (fingerprint, result)
+        st.session_state["last_chat"] = (fingerprint, reference_fingerprint, result)
 
     payload = st.session_state.get("last_chat")
-    if payload and payload[0] == fingerprint and rgb is not None:
-        result = payload[1]
+    if (
+        payload
+        and len(payload) == 3
+        and payload[0] == fingerprint
+        and payload[1] == reference_fingerprint
+        and rgb is not None
+    ):
+        result = payload[2]
         if result.status == "error":
             st.error("Neither visual analysis nor OCR could complete.")
             if result.error_message:
@@ -1057,11 +1185,16 @@ def render_chat_page() -> None:
             st.caption(
                 "This badge is a pixel-level visual screening signal for the screenshot. "
                 "It is not message-level verification and does not prove that the whole "
-                "screenshot is authentic or manipulated."
+                "screenshot is authentic or manipulated. Measured on synthetic screenshots, "
+                "the model flagged all authentic images, so do not rely on this badge alone."
             )
         st.progress(min(max(result.visual_score, 0.0), 1.0), text="Maximum visual anomaly score")
 
-        tabs = st.tabs(["Visual analysis", "OCR text", "Regions & text", "Limitations"])
+        comparison = result.reference_comparison
+        tab_labels = ["Visual analysis", "OCR text", "Regions & text", "Limitations"]
+        if comparison is not None:
+            tab_labels.insert(3, "Reference comparison")
+        tabs = st.tabs(tab_labels)
         with tabs[0]:
             columns = st.columns(3, gap="medium")
             with columns[0]:
@@ -1144,7 +1277,14 @@ def render_chat_page() -> None:
             )
 
         with tabs[3]:
-            render_limitations(result.warnings, result.limitations)
+            if comparison is None:
+                render_limitations(result.warnings, result.limitations)
+            else:
+                render_reference_comparison(comparison)
+
+        if comparison is not None:
+            with tabs[4]:
+                render_limitations(result.warnings, result.limitations)
 
         st.write("")
         st.markdown("**Download results**")
@@ -1155,6 +1295,13 @@ def render_chat_page() -> None:
             files["Heatmap PNG"] = encode_png_bytes(result.heatmap)
         if result.mask_visual is not None:
             files["Mask PNG"] = encode_mask_png_bytes(result.manipulation.binary_mask)
+        if comparison is not None:
+            if comparison.side_by_side is not None:
+                files["Reference comparison PNG"] = encode_png_bytes(comparison.side_by_side)
+            if comparison.change_mask is not None:
+                files["Reference change mask PNG"] = encode_mask_png_bytes(
+                    comparison.change_mask
+                )
         if ocr_available and result.ocr.full_text:
             files["Transcript TXT"] = result.ocr.full_text.encode("utf-8")
         download_row("chat", files)

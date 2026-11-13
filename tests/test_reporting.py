@@ -87,3 +87,27 @@ def test_chat_record_has_no_ocr_text(tmp_path, rgb_image, fake_predictor):
     assert "ocr_lines" in raw
     assert "hello" not in raw
     assert "pixel-level signal" in raw
+
+
+def test_chat_report_and_record_include_reference_summary(rgb_image, fake_predictor):
+    reference = rgb_image.copy()
+    suspect = rgb_image.copy()
+    suspect[40:120, 80:180] = (10, 200, 240)
+
+    result = detect_chat_tampering(
+        suspect,
+        threshold=0.5,
+        predictor=fake_predictor,
+        run_ocr=False,
+        reference_rgb=reference,
+    )
+    assert result.reference_comparison is not None
+
+    record = record_from_chat(result, "fp")
+    assert record.extra["reference_supplied"] is True
+    assert record.extra["reference_changed_regions"] >= 1
+    assert record.extra["reference_finding"] == result.reference_comparison.finding
+
+    report = build_chat_report(result, "fingerprint")
+    assert "REFERENCE COMPARISON" in report
+    assert "Recognised text is intentionally omitted" in report
