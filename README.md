@@ -1,37 +1,108 @@
-# MVSS-Net
+# Digital Image Forensics — MVSS-Net
 
-> **Integrated web application:** this repository now contains a Streamlit
-> digital-forensics dashboard built around the pretrained MVSS-Net checkpoint:
-> image manipulation localization, a pluggable AI-generated-image detector and
-> chat-screenshot screening with OCR.
->
-> **Run it:**
->
-> ```powershell
-> .\mvss_venv\Scripts\python.exe -m pip install -r requirements-app.txt
-> .\mvss_venv\Scripts\python.exe -m streamlit run app.py
-> ```
->
-> Full documentation, evaluation protocol, privacy rules and troubleshooting:
-> [`docs/APPLICATION.md`](docs/APPLICATION.md).
-> AI detector integration contract:
-> [`models/ai_detector/README.md`](models/ai_detector/README.md).
-> Tests: `.\mvss_venv\Scripts\python.exe -m pytest tests -q`.
->
-> Module 1 (`ckpt/mvssnet_casia.pt`) is ready. It now reports an image-level
-> **Authentic / Tampered / Uncertain** prediction derived from the existing
-> probability map, using an image-level threshold selected on validation
-> authentic and tampered images. That threshold is separate from the pixel
-> localization threshold, and the test split is not used for selection.
-> Pixel-level localization is shown as a separate badge
-> (*Pixel-level signal: Possible manipulation / No strong evidence*), together
-> with raw thresholded area and the retained highlighted area, so a localization
-> signal is never presented as proof that the whole image is tampered.
-> The maximum-pixel image score was compared with mean-top-k and area-based
-> alternatives on validation data; it remains the deployed method.
-> Module 2 is an explicitly labelled placeholder until trained weights are
-> supplied and reports no scores. Module 3 is visual screening plus OCR, not
-> message verification.
+A Streamlit digital-forensics application built around MVSS-Net, with three independent
+modules, a leakage-aware Module 1 evaluation pipeline, and an automated Colab GPU
+notebook.
+
+## Project status
+
+| Module | What it does | Status | Evidence |
+| --- | --- | --- | --- |
+| **1. Image manipulation** | MVSS-Net localisation + Authentic / Tampered / Uncertain image decision | **Ready** | Original checkpoint measured with a leakage caveat; group-aware retraining runs in the Colab notebook |
+| **2. AI-generated image** | Pluggable detector with a TorchScript backend | **Pending / unavailable** | Harness and tests only; no licensed dataset, trained checkpoint or metrics |
+| **3. Chat screenshot** | Visual screening, OCR and optional trusted-reference comparison | **Ready** (screening; reference comparison for visible differences) | Measured on locally generated synthetic screenshots only |
+
+Honesty rules enforced by the project:
+
+* Module 2 shows **unavailable** instead of inventing a prediction.
+* Module 3 never claims real-world accuracy from synthetic renders, and never claims to
+  recover the original conversation without a trusted reference.
+* Module 1 thresholds (**0.40** pixel, **0.42** image, **±0.13** uncertainty) were selected
+  on validation data only; the test split is never used for tuning.
+* The original checkpoint `ckpt/mvssnet_casia.pt` and the group-aware split are treated as
+  read-only, with their SHA-256 hashes verified before training.
+
+## Quick start (Windows PowerShell)
+
+```powershell
+cd D:\projects\MVSS-Net\MVSS-Net-master
+.\mvss_venv\Scripts\python.exe -m pip install -r requirements-app.txt
+.\mvss_venv\Scripts\python.exe -m streamlit run app.py
+```
+
+Open <http://localhost:8501>. The first Module 1 analysis loads the 560 MB checkpoint.
+
+## One-notebook Colab GPU workflow
+
+[`notebooks/colab_end_to_end.ipynb`](notebooks/colab_end_to_end.ipynb) automates the whole
+GPU path on a Tesla T4:
+
+1. environment and disk check,
+2. repository check / optional clone,
+3. dataset layout detection with symlink staging (no files copied),
+4. preservation hashes, split counts and mask audit,
+5. preprocessing / model / threshold / app consistency gate,
+6. pytest,
+7. Module 1 smoke run,
+8. group-aware training with **automatic resume** from `last.pt`,
+9. checkpoint export and direct download (no Google Drive required),
+10. independent held-out test evaluation,
+11. honest Module 2 status,
+12. synthetic Module 3 evaluation,
+13. ZIP export of metrics, logs and summaries.
+
+Defaults: 4 epochs, batch 4, 512 px, full train/validation splits. Re-running the
+notebook resumes from the last completed epoch; a batch-size change after a CUDA
+out-of-memory error does not restart training.
+
+## Demo and documentation
+
+* **Teacher demo:** [`docs/DEMO_GUIDE.md`](docs/DEMO_GUIDE.md) — exact clicks, uploads,
+  speaking notes and honest limitations for a five-minute walkthrough.
+* **Application reference:** [`docs/APPLICATION.md`](docs/APPLICATION.md) — architecture,
+  thresholds, environment variables, privacy rules and troubleshooting.
+* **Measured results and caveats:** [`docs/EVALUATION_REPORT.md`](docs/EVALUATION_REPORT.md).
+* **GPU details and manual commands:** [`docs/COLAB_RUNBOOK.md`](docs/COLAB_RUNBOOK.md).
+* **Module 2 integration contract:** [`models/ai_detector/README.md`](models/ai_detector/README.md).
+
+## Tests
+
+```powershell
+.\mvss_venv\Scripts\python.exe -m pytest tests -q
+```
+
+Expected on the current machine: **172 passed, 2 skipped** (both skips need symlink
+permission; the notebook exercises those paths on Linux).
+
+## Verification log (14 Nov 2026)
+
+| Check | Verified result |
+| --- | --- |
+| Streamlit server | `/` and `/_stcore/health` return **HTTP 200 / `ok`**; six sidebar pages switch without app exceptions |
+| Real dataset audit | 8,831 train / 1,694 validation / 2,089 test; 0 cross-split components; 0 missing images; 17 tampered rows without masks excluded and reported |
+| Model + app contract (CPU, 512 px) | mask `[1,1,512,512]`, edge `[1,1,128,128]`, finite probabilities; a 450×600 upload returns a 450×600 map |
+| Module 1 CPU smoke + resume | 1 epoch on 4 train / 3 validation images; resumed epoch keeps LR `5e-06` and accepts a batch-size change |
+| Module 1 test evaluation plumbing | `--smoke` run on held-out test rows exits 0 and labels itself sampled/non-quotable |
+| Module 3 synthetic reference comparison | 8 pairs: text precision/recall 1.0, region recall 1.0, pixel IoU 0.180, authentic-pair FPR 0.0 |
+| Upload handling | valid images reach the decision card; invalid bytes show `Upload rejected`; uploader reports 25 MB |
+| Full test suite | **172 passed, 2 skipped** |
+
+Full-split Module 1 GPU training and its held-out metrics are still produced only by the
+Colab notebook; no GPU is available on this machine.
+
+## Use the retrained checkpoint
+
+Keep the original file untouched and select the retrained weights with an environment
+variable:
+
+```powershell
+$env:MVSS_CHECKPOINT = "D:\path\to\mvssnet_groupaware.pt"
+.\mvss_venv\Scripts\python.exe -m streamlit run app.py
+```
+
+---
+
+## Upstream MVSS-Net
 
 **Code and models for ICCV 2021 paper: *Image Manipulation Detection by Multi-View Multi-Scale Supervision***
 

@@ -250,6 +250,102 @@ def test_training_writes_artifacts_and_stays_off_the_test_split(tiny_dataset, tm
     assert isinstance(exported, dict) and set(exported) == {"bias"}
 
 
+def test_resume_restores_the_cosine_learning_rate_schedule(tiny_dataset, tmp_path):
+    """A resumed run must continue the LR schedule, not restart at the base LR.
+
+    The saved scheduler is one step into a two-epoch cosine schedule, so the
+    second epoch must log the cosine value near ``eta_min`` instead of the base
+    learning rate that a fresh scheduler would use.
+    """
+    root, manifest, split_csv = tiny_dataset
+    args = _args(tmp_path, root, manifest, split_csv)
+    args.epochs = 2
+    args.learning_rate = 1e-4
+
+    model = _TinyMVSS()
+    optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimizer, T_max=2, eta_min=args.learning_rate * 0.05
+    )
+    model.bias.grad = torch.zeros_like(model.bias)
+    optimizer.step()
+    scheduler.step()  # end of the first completed epoch
+    lr_after_epoch_one = optimizer.param_groups[0]["lr"]
+    assert lr_after_epoch_one > 2e-5  # a restart would land here, near 5.25e-5
+
+    output = args.output_dir
+    output.mkdir(parents=True)
+    torch.save(
+        {
+            "model_state": model.state_dict(),
+            "optimizer_state": optimizer.state_dict(),
+            "scaler_state": None,
+            "scheduler_state": scheduler.state_dict(),
+            "epoch": 0,
+            "best_iou": 0.5,
+            "history": [{"epoch": 1}],
+            "config": {"epochs": 2, "learning_rate": args.learning_rate},
+        },
+        output / "last.pt",
+    )
+    args.resume = output / "last.pt"
+
+    train(args, model_factory=lambda device: _TinyMVSS().to(device))
+
+    log = pd.read_csv(output / "training_log.csv")
+    assert log["epoch"].tolist() == [2]
+    resumed_lr = float(log.iloc[-1]["learning_rate"])
+    assert resumed_lr < 2e-5
+    assert resumed_lr < lr_after_epoch_one / 2
+    saved = torch.load(output / "last.pt", map_location="cpu", weights_only=False)
+    assert saved["scheduler_state"]["last_epoch"] == 2
+
+
+def test_resume_extends_a_finished_schedule_without_resetting_lr(tiny_dataset, tmp_path):
+    """Extending 1 epoch to 2 must continue the curve, not restore the base LR.
+
+    Loading a scheduler state_dict also restores its old ``T_max``.  If the new
+    horizon is not re-applied, the next cosine step lands back on the base
+    learning rate (1e-4) instead of continuing toward ``eta_min``.
+    """
+    root, manifest, split_csv = tiny_dataset
+    args = _args(tmp_path, root, manifest, split_csv)
+    args.epochs = 2
+    args.learning_rate = 1e-4
+
+    model = _TinyMVSS()
+    optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimizer, T_max=1, eta_min=args.learning_rate * 0.05
+    )
+    model.bias.grad = torch.zeros_like(model.bias)
+    optimizer.step()
+    scheduler.step()  # one-epoch schedule is now complete
+
+    output = args.output_dir
+    output.mkdir(parents=True)
+    torch.save(
+        {
+            "model_state": model.state_dict(),
+            "optimizer_state": optimizer.state_dict(),
+            "scaler_state": None,
+            "scheduler_state": scheduler.state_dict(),
+            "epoch": 0,
+            "best_iou": 0.5,
+            "history": [{"epoch": 1}],
+            "config": {"epochs": 1, "learning_rate": args.learning_rate},
+        },
+        output / "last.pt",
+    )
+    args.resume = output / "last.pt"
+
+    train(args, model_factory=lambda device: _TinyMVSS().to(device))
+
+    log = pd.read_csv(output / "training_log.csv")
+    assert log["epoch"].tolist() == [2]
+    assert float(log.iloc[-1]["learning_rate"]) < 2e-5
+
+
 def test_training_refuses_to_overwrite_output(tiny_dataset, tmp_path):
     root, manifest, split_csv = tiny_dataset
     args = _args(tmp_path, root, manifest, split_csv)

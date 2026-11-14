@@ -144,6 +144,10 @@ main.pdf
 # ==========================================
 # PROJECT-SPECIFIC
 # ==========================================
+# Scratch training runs (large .pt files stay on disk, never in Git)
+experiments/*
+!experiments/dataset_split.csv
+
 # Runtime application history
 results/app/
 

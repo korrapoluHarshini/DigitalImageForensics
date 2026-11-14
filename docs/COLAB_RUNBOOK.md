@@ -1,5 +1,14 @@
 # Google Colab / GPU Runbook
 
+> **Start with the automated notebook:**
+> [`notebooks/colab_end_to_end.ipynb`](../notebooks/colab_end_to_end.ipynb) runs the whole
+> Module 1 GPU workflow — environment and input checks, consistency gate, pytest, smoke
+> test, resume-aware training, checkpoint export/download, independent test evaluation and
+> artifact packaging — **without Google Drive**. The manual commands below remain useful as
+> a reference and for Module 2 once a licensed dataset is approved. If Drive has little
+> free space, skip the Drive step and keep outputs under `/content`, then download the
+> exported checkpoint at the end.
+
 This repository is CPU-only on the development machine. The two training
 workloads that benefit from a GPU are:
 

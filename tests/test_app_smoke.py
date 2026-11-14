@@ -60,3 +60,11 @@ def test_sidebar_reports_threshold_and_status(app):
     assert sliders["Localization threshold"] == pytest.approx(0.4, abs=0.01)
     assert sliders["Image decision threshold"] == pytest.approx(0.42, abs=0.01)
     assert sliders["Uncertainty band (±)"] == pytest.approx(0.13, abs=0.01)
+
+
+def test_uploader_enforces_the_configured_megabyte_limit(app):
+    """Streamlit reads max_upload_size in MB; passing bytes displayed '25600GB'."""
+    app.radio[0].set_value("Image Manipulation Detection").run()
+    uploader = app.file_uploader[0]
+    assert uploader.proto.max_upload_size_mb == 25
+    assert set(uploader.allowed_type) == {".jpg", ".jpeg", ".png", ".webp"}

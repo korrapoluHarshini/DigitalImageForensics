@@ -398,7 +398,10 @@ def _jsonable(value):
 def _new_model(device: torch.device) -> nn.Module:
     model = get_mvss(
         backbone="resnet50",
-        pretrained_base=True,
+        # The weights come from --init-checkpoint / --resume, so the ImageNet
+        # base download is unnecessary.  This also matches the app's loader and
+        # keeps the pipeline reproducible without network access.
+        pretrained_base=False,
         nclass=1,
         sobel=True,
         constrain=True,
@@ -482,6 +485,21 @@ def train(args, model_factory=None) -> dict:
         optimizer.load_state_dict(checkpoint["optimizer_state"])
         if checkpoint.get("scaler_state") is not None:
             scaler.load_state_dict(checkpoint["scaler_state"])
+        if checkpoint.get("scheduler_state") is not None:
+            # Restore the cosine schedule so a resumed run does not restart at
+            # the initial learning rate.  Older checkpoints lack this key, in
+            # which case the schedule restarts and that is reported.
+            scheduler.load_state_dict(checkpoint["scheduler_state"])
+            # ``load_state_dict`` also restores the saved T_max.  Re-apply the
+            # horizon requested for this run so that extending a finished
+            # schedule continues the cosine curve instead of jumping back to
+            # the base learning rate.
+            scheduler.T_max = max(1, args.epochs)
+        else:
+            print(
+                "Resume checkpoint has no scheduler_state; the cosine schedule "
+                "will restart at the initial learning rate."
+            )
         start_epoch = int(checkpoint.get("epoch", -1)) + 1
         best_iou = float(checkpoint.get("best_iou", -1.0))
         history = list(checkpoint.get("history", []))
@@ -561,6 +579,7 @@ def train(args, model_factory=None) -> dict:
                         "model_state": model.state_dict(),
                         "optimizer_state": optimizer.state_dict(),
                         "scaler_state": scaler.state_dict(),
+                        "scheduler_state": scheduler.state_dict(),
                         "epoch": epoch,
                         "best_iou": best_iou,
                         "history": history,
@@ -573,6 +592,7 @@ def train(args, model_factory=None) -> dict:
                     "model_state": model.state_dict(),
                     "optimizer_state": optimizer.state_dict(),
                     "scaler_state": scaler.state_dict(),
+                    "scheduler_state": scheduler.state_dict(),
                     "epoch": epoch,
                     "best_iou": best_iou,
                     "history": history,

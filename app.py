@@ -333,7 +333,7 @@ def upload_image(key: str, label: str, help_text: str):
         label,
         type=["jpg", "jpeg", "png", "webp"],
         key=key,
-        max_upload_size=settings.max_upload_mb * 1024 * 1024,
+        max_upload_size=settings.max_upload_mb,
         help=help_text,
     )
     if uploaded is None:

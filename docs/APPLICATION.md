@@ -233,7 +233,7 @@ evaluation/
 models/
   ai_detector/                      manifest + integration contract
   chat_detector/                    notes for a future dedicated model
-tests/                              pytest suite (150 tests)
+tests/                              pytest suite (172 tests)
 notebooks/colab_workflow.ipynb      Colab GPU workflow (setup, train, evaluate)
 results/evaluation/                 generated metrics artifacts
 requirements-app.txt                runtime dependencies
@@ -502,14 +502,15 @@ must not be read as real-app robustness.
 .\mvss_venv\Scripts\python.exe -m pytest tests -q
 ```
 
-150 tests cover upload validation, preprocessing parity with
+172 tests cover upload validation, preprocessing parity with
 `common.transforms.direct_val`, region extraction, image-level decision and
 uncertainty logic, raw-vs-retained area diagnostics, explanation text, label
 consistency, metrics, module failure isolation, manifest handling, a real
 TorchScript backend, the Module 2 training/export harness, the Module 1
-group-aware training/evaluation pipeline, OCR line grouping, chat reference
-comparison, chat degradation helpers, the synthetic chat dataset and all six
-Streamlit pages via `AppTest`.
+group-aware training/evaluation pipeline (including cosine-schedule resume),
+resume planning and artifact packaging for the Colab notebook, OCR line
+grouping, chat reference comparison, chat degradation helpers, the synthetic
+chat dataset and all six Streamlit pages via `AppTest`.
 
 ---
 
