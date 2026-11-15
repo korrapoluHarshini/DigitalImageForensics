@@ -6,7 +6,7 @@ into one dashboard:
 | Module | Purpose | Status |
 | --- | --- | --- |
 | 1. Image Manipulation | Pixel-level forgery localization with MVSS-Net (ResNet-50, CASIA2.0 checkpoint) | Ready (cross-split leakage quantified; leakage-free retraining harness ready, GPU run pending) |
-| 2. AI-Generated Image | Real / AI-generated / uncertain classification through a pluggable detector | Integration placeholder — no weights bundled; training harness ready |
+| 2. AI-Generated Image | Real / AI-generated / uncertain classification through a pluggable detector | Integrated — ResNet-18 TorchScript weights in `models/ai_detector/`; held-out-generator results documented in `EVALUATION_REPORT.md` |
 | 3. Chat Screenshot | Visual anomaly screening, OCR transcription and reference comparison | Ready (screening only; reference comparison for message-level differences) |
 
 The application is an academic decision-support demo. It does **not** prove that
@@ -137,9 +137,12 @@ highlighted overlay; it was selected on validation tampered images for
 localization IoU. Changing one does not silently change the other.
 
 ### AI-Generated Image Detection
-Until a detector is supplied the page shows an explicit integration placeholder
-and produces **no scores**. To integrate a model, see
-[`models/ai_detector/README.md`](../models/ai_detector/README.md).
+A detector is integrated through `models/ai_detector/manifest.json` and
+`models/ai_detector/detector.ts` (ResNet-18, 192 px, trained on GenImage-processed).
+The page reports `real`, `ai_generated` or `uncertain`; it abstains when the top
+probability is below 0.60 or the class margin is below 0.20. Without a manifest the
+page shows an explicit integration placeholder and produces **no scores**. To swap in
+another model, see [`models/ai_detector/README.md`](../models/ai_detector/README.md).
 
 Supported backend kinds:
 
@@ -233,7 +236,7 @@ evaluation/
 models/
   ai_detector/                      manifest + integration contract
   chat_detector/                    notes for a future dedicated model
-tests/                              pytest suite (172 tests)
+tests/                              pytest suite (177 tests)
 notebooks/colab_workflow.ipynb      Colab GPU workflow (setup, train, evaluate)
 results/evaluation/                 generated metrics artifacts
 requirements-app.txt                runtime dependencies
@@ -249,9 +252,9 @@ missing checkpoint, OCR backend or AI model degrades only the affected page.
 
 ## 4. Evaluation
 
-All numbers below come from artifacts in `results/evaluation/`. No metrics are
-reported for the placeholder Module 2, and thresholds were never tuned on test
-data.
+All numbers below come from artifacts in `results/evaluation/` and
+`experiments/module2/`. Module 2 metrics come from its own training run, not from
+placeholder data, and thresholds were never tuned on test data.
 
 ### Threshold selection (validation only)
 
@@ -434,24 +437,28 @@ stopping, and exports TorchScript plus an app-compatible `manifest.json`.
 `tests/test_module2_training.py` verifies the split, export and
 `load_backend` contract on a tiny synthetic dataset.
 
-Real training is blocked: this machine is CPU-only and no dataset has been
-downloaded. GenImage (CC BY-NC-SA 4.0, academic/non-commercial, >1M images) and
-Synthbuster (12.37 GB, CC BY-NC-SA 4.0, 9 generators) were verified as available
-on 2026-11-13, but both require explicit approval because of size/licence, and
-Synthbuster excludes the real RAISE-1k images. No accuracy or cross-generator
-claim is made. Once an approved dataset is available (see
+Training used the approved GenImage-processed set (30,000 images; 15,000 real /
+15,000 AI, six generators) with BigGAN and Midjourney held out entirely. On CPU,
+a ResNet-18 at 192 px for 4 epochs reached validation AUC 0.9718; the
+all-generator test AUC was 0.8888. Held-out BigGAN reached 0.983, while held-out
+Midjourney reached only 0.746 (recall 0.289), so cross-generator performance is
+uneven. The exported TorchScript and manifest are installed in
+`models/ai_detector/`. Reproduce with (see
 [`COLAB_RUNBOOK.md`](COLAB_RUNBOOK.md) §4):
 
 ```powershell
 .\mvss_venv\Scripts\python.exe training\train_ai_detector.py `
-  --real-dir path\to\real --ai-dir path\to\ai `
-  --output-dir experiments\module2\run_v1 `
-  --backbone efficientnet_b0 --epochs 20 `
-  --holdout-generators gen_holdout_a,gen_holdout_b
+  --real-dir datasets\module2_genimage\prepared\real `
+  --ai-dir datasets\module2_genimage\prepared\ai `
+  --output-dir experiments\module2\genimage_resnet18_v2 `
+  --backbone resnet18 --pretrained --input-size 192 --epochs 4 `
+  --batch-size 32 --learning-rate 3e-4 --holdout-generators BigGAN,Midjourney `
+  --device cpu --num-workers 0
 
 .\mvss_venv\Scripts\python.exe evaluation\evaluate_module2.py `
-  --real-dir path\to\real --ai-dir path\to\ai `
-  --manifest experiments\module2\run_v1\manifest.json
+  --real-dir datasets\module2_genimage\prepared\real `
+  --ai-dir datasets\module2_genimage\prepared\ai `
+  --manifest experiments\module2\genimage_resnet18_v2\manifest.json
 ```
 
 The evaluator reports accuracy, macro precision/recall/F1, the confusion matrix,
@@ -502,11 +509,12 @@ must not be read as real-app robustness.
 .\mvss_venv\Scripts\python.exe -m pytest tests -q
 ```
 
-172 tests cover upload validation, preprocessing parity with
+177 tests cover upload validation, preprocessing parity with
 `common.transforms.direct_val`, region extraction, image-level decision and
 uncertainty logic, raw-vs-retained area diagnostics, explanation text, label
 consistency, metrics, module failure isolation, manifest handling, a real
-TorchScript backend, the Module 2 training/export harness, the Module 1
+TorchScript backend, the Module 2 training/export harness, the Module 2 dataset
+preparation layout, the Module 1
 group-aware training/evaluation pipeline (including cosine-schedule resume),
 resume planning and artifact packaging for the Colab notebook, OCR line
 grouping, chat reference comparison, chat degradation helpers, the synthetic

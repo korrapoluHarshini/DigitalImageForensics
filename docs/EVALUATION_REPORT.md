@@ -18,7 +18,7 @@ report was tuned on the test split.
 | 1 - Manipulation localization | CASIA2.0 test split (768 tampered images, cached maps) | Global IoU **0.7466**, mean image IoU **0.5891**, micro F1 **0.855** | Measured, with leakage caveat |
 | 1 - Image-level | Validation (767 tampered + 398 authentic) | AUC **0.9880**, recall **0.901** at threshold 0.42, FPR **0.045** | Measured |
 | 1 - Leakage-free retraining | Group-aware split, harness only | **No metrics yet** | Smoke-verified CPU pipeline; GPU run pending (Colab runbook) |
-| 2 - AI-generated detection | None | **No metrics** | Harness implemented; dataset approval pending |
+| 2 - AI-generated detection | GenImage-processed, 8,750 test images; BigGAN + Midjourney held out | Test AUC **0.8888**; BigGAN **0.983**, Midjourney **0.746** | Measured; uneven cross-generator transfer |
 | 3 - Chat screening (no reference) | 8 synthetic conversations | Localization IoU **0.0**, authentic FPR **1.0** | Measured; out-of-domain failure |
 | 3 - Chat reference comparison | 8 synthetic conversations / 10 edits | Text-change precision/recall **1.0 / 1.0**, authentic-pair FPR **0.0** | Measured on controlled synthetic data |
 | 3 - Degradation stress test | Same 8 pairs, JPEG/rescale | Text recall **1.0 -> 0.7** as degradation grows; authentic FPR **0.0** | Measured on synthetic data |
@@ -129,8 +129,9 @@ see `COLAB_RUNBOOK.md` for the commands and the resumable workflow.
 
 ## 3. Module 2 — AI-generated image detection
 
-Artifact: none. No detector weights are bundled and no labelled AI-image
-dataset was available.
+Artifacts: `experiments/module2/genimage_resnet18_v2/metrics.json`,
+`split.csv`, `manifest.json` and `detector.ts`; the weights are installed in
+`models/ai_detector/`.
 
 Implemented: `training/train_ai_detector.py`, a dataset-agnostic harness that
 trains a small CNN or torchvision backbone (EfficientNet-B0, ResNet-18/50,
@@ -143,39 +144,55 @@ split determinism, held-out-generator exclusion, checkpoint/export, manifest
 schema and `load_backend` TorchScript prediction all pass. The exported model is
 verified to load through `modules.ai_generated_detection.model.load_backend`.
 
-**No accuracy, AUC or cross-generator claim is made.** Real training is blocked
-by an explicit approval gate, not by missing information:
+**Measured result.** A ResNet-18 detector was trained on the approved
+GenImage-processed set (30,000 images; 15,000 real / 15,000 AI across six
+generators) with **BigGAN and Midjourney held out entirely**. Model: ResNet-18,
+ImageNet pretrained, 192 px, 4 epochs, batch 32, LR 3e-4, CPU, seed 42; the
+decision threshold is fixed at 0.5 and was not tuned on test data.
 
-* CPU-only machine (no CUDA); full training is infeasible locally.
-* The dataset catalogue was re-checked on 2026-11-13. GenImage (official) is
-  CC BY-NC-SA 4.0, academic/non-commercial, over one million images; its
-  unofficial HuggingFace mirror `jzousz/GenImage` accounts for ~678 GB. The
-  official release is distributed through Google Drive/Baidu.
-  Synthbuster (Zenodo `10.5281/zenodo.10066460`) is 12.37 GB, CC BY-NC-SA 4.0,
-  and contains 9 generators x 1000 images, but **not** the real RAISE-1k images.
-* No dataset has been downloaded. The project rules require approval before a
-  large or licence-restricted download, and RAISE-1k needs its own licence
-  check. Until then the application keeps its honest `unavailable` placeholder.
+| Split | Images | ROC-AUC | Accuracy | Precision | Recall | F1 | FPR |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Validation (seen generators) | 3,750 | 0.9718 | 0.9123 | 0.8831 | 0.8945 | 0.8887 | 0.0763 |
+| Test (all generators) | 8,750 | 0.8888 | 0.7442 | 0.9641 | 0.6825 | 0.7992 | 0.0746 |
 
-Recommended Module 2 experiment once approved: train on Synthbuster with two
-generators held out entirely (`--holdout-generators`), then report
-in-distribution and held-out-generator metrics separately. See
-`COLAB_RUNBOOK.md` §4 for the exact commands and expected folder layout.
+Per-generator test ROC-AUC (each generator scored against the same real test
+images):
 
-When an approved dataset exists:
+| Generator | Held out? | ROC-AUC | Recall |
+| --- | --- | --- | --- |
+| GLIDE | no | 0.9911 | 0.978 |
+| BigGAN | **yes** | 0.9833 | 0.952 |
+| ADM | no | 0.9818 | 0.942 |
+| Stable Diffusion V1.5 | no | 0.9539 | 0.816 |
+| VQDM | no | 0.9460 | 0.804 |
+| Midjourney | **yes** | 0.7457 | 0.289 |
+
+The cross-generator result is **uneven**: BigGAN generalises well, but
+Midjourney recall falls to 0.289 (AUC 0.746). This is the honest headline, not
+the in-distribution validation AUC. Training/export artifacts are in
+`experiments/module2/genimage_resnet18_v2/`; the exported TorchScript and
+manifest are installed in `models/ai_detector/`. Dataset provenance, hashes and
+licence are in `DATASET_MODULE2.md`.
+
+Limitations: one dataset, one architecture, four CPU epochs, and a fixed 0.5
+threshold. No independent real-photo benchmark has been run; domain shift from
+resizing, screenshots and social-media compression can reduce reliability.
+
+Reproduce the run with:
 
 ```powershell
 .\mvss_venv\Scripts\python.exe training\train_ai_detector.py `
-  --real-dir D:\ImageForensics_Datasets\module2\real `
-  --ai-dir D:\ImageForensics_Datasets\module2\ai `
-  --output-dir experiments\module2\run_v1 `
-  --backbone efficientnet_b0 --epochs 20 `
-  --holdout-generators gen_holdout_a,gen_holdout_b
+  --real-dir datasets\module2_genimage\prepared\real `
+  --ai-dir datasets\module2_genimage\prepared\ai `
+  --output-dir experiments\module2\genimage_resnet18_v2 `
+  --backbone resnet18 --pretrained --input-size 192 --epochs 4 `
+  --batch-size 32 --learning-rate 3e-4 --holdout-generators BigGAN,Midjourney `
+  --device cpu --num-workers 0
 
 .\mvss_venv\Scripts\python.exe evaluation\evaluate_module2.py `
-  --real-dir D:\ImageForensics_Datasets\module2\real `
-  --ai-dir D:\ImageForensics_Datasets\module2\ai `
-  --manifest experiments\module2\run_v1\manifest.json
+  --real-dir datasets\module2_genimage\prepared\real `
+  --ai-dir datasets\module2_genimage\prepared\ai `
+  --manifest experiments\module2\genimage_resnet18_v2\manifest.json
 ```
 
 Report per-generator metrics separately; a generator present in training is not
@@ -295,8 +312,14 @@ are synthetic renders; real app re-rendering is not represented.
   --checkpoint experiments\module1\groupaware_v1\mvssnet_groupaware.pt `
   --split test --output results\evaluation\module1_groupaware_test_metrics.json
 
-# Module 2 harness (requires a real dataset; refuses placeholder data)
-.\mvss_venv\Scripts\python.exe training\train_ai_detector.py --help
+# Module 2 reproduction (GenImage-processed; BigGAN + Midjourney held out)
+.\mvss_venv\Scripts\python.exe training\train_ai_detector.py `
+  --real-dir datasets\module2_genimage\prepared\real `
+  --ai-dir datasets\module2_genimage\prepared\ai `
+  --output-dir experiments\module2\genimage_resnet18_v2 `
+  --backbone resnet18 --pretrained --input-size 192 --epochs 4 `
+  --batch-size 32 --learning-rate 3e-4 --holdout-generators BigGAN,Midjourney `
+  --device cpu --num-workers 0
 
 # Module 3 synthetic dataset + evaluations
 .\mvss_venv\Scripts\python.exe evaluation\build_synthetic_chat_dataset.py `
@@ -325,8 +348,11 @@ are synthetic renders; real app re-rendering is not represented.
 3. **Round-trip metric recovery.** Leakage analysis uses stored rounded
    per-image metrics, not re-inference. Differences up to ~0.004 in precision
    are visible and documented.
-4. **Module 2 has no evidence.** The harness is tested structurally only. No
-   real detector performance is claimed.
+4. **Module 2 evidence is single-dataset and uneven across generators.** The
+   ResNet-18 detector was trained on one approved dataset with BigGAN and
+   Midjourney held out. BigGAN generalised well (test AUC 0.983) but
+   Midjourney did not (AUC 0.746, recall 0.289). No independent real-photo
+   benchmark or multi-seed variance estimate exists.
 5. **Module 3 data is synthetic.** Rendered screenshots lack real capture,
    recompression and app-version artefacts. 100% text recall is not a
    real-world expectation.
@@ -349,6 +375,7 @@ are synthetic renders; real app re-rendering is not represented.
     screenshots does not reproduce messaging-app re-rendering, colour
     management, or unknown resampling. The text-precision collapse under
     one-sided JPEG is a warning, not a measured real-world rate.
-12. **Module 2 dataset gate.** GenImage and Synthbuster are academic,
-    non-commercial datasets and GenImage is hundreds of gigabytes. Neither has
-    been downloaded; no Module 2 metric exists.
+12. **Module 2 licence and scope.** The approved GenImage-processed subset inherits
+    CC BY-NC-SA 4.0 (academic/non-commercial). The detector was trained on one
+    30,000-image subset for four CPU epochs; no multi-seed variance, independent
+    real-photo benchmark, or licensing review for deployment exists.

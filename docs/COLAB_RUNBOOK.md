@@ -5,7 +5,7 @@
 > Module 1 GPU workflow — environment and input checks, consistency gate, pytest, smoke
 > test, resume-aware training, checkpoint export/download, independent test evaluation and
 > artifact packaging — **without Google Drive**. The manual commands below remain useful as
-> a reference and for Module 2 once a licensed dataset is approved. If Drive has little
+> a reference and for reproducing the Module 2 run. If Drive has little
 > free space, skip the Drive step and keep outputs under `/content`, then download the
 > exported checkpoint at the end.
 
@@ -15,7 +15,7 @@ workloads that benefit from a GPU are:
 | Task | Script | Local status | GPU status |
 | --- | --- | --- | --- |
 | Module 1 retraining on the leakage-free split | `training/train_mvss_groupaware.py` | smoke-verified on CPU | ready to run |
-| Module 2 AI-image detector | `training/train_ai_detector.py` | harness tested on synthetic folders | needs a licensed dataset (see §4) |
+| Module 2 AI-image detector | `training/train_ai_detector.py` | trained and evaluated locally on CPU (cross-generator holdout) | ready to reproduce (see §4) |
 
 All commands below are written for a Colab notebook cell (`!` prefix optional)
 or a Colab terminal. Nothing in this runbook has been executed on a GPU in this
@@ -164,79 +164,84 @@ were the same benchmark: the splits differ by construction.
 
 ---
 
-## 4. Module 2 - dataset gate (approval required)
+## 4. Module 2 - GenImage-processed detector (approved dataset)
 
-No AI-image dataset ships with this repository and no download has been made.
-Verified options as of this runbook:
+The Module 2 dataset was approved and used: `Qwerty0193/genimage-processed` on the
+Hugging Face Hub.
 
-| Dataset | Licence | Size | Generators | Notes |
-| --- | --- | --- | --- | --- |
-| GenImage (official) | CC BY-NC-SA 4.0, academic/non-commercial | >1M images, hundreds of GB | 8 | Google Drive/Baidu; the unofficial HF mirror `jzousz/GenImage` uses ~678 GB |
-| Synthbuster (Zenodo `10.5281/zenodo.10066460`) | CC BY-NC-SA 4.0 | 12.37 GB zip | 9 (DALL-E 2/3, Firefly, Midjourney v5, SD 1.3/1.4/2/XL, GLIDE) | real images are **not** included; pair with RAISE-1k |
+| Property | Value |
+| --- | --- |
+| Download | `metadata.parquet` 570 KB + `processed_images.zip` 702 MB (669.4 MB transferred) |
+| Images | 30,000: 15,000 real + 15,000 AI, six generators x 2,500 |
+| Format | 224x224 JPEG Q96 (uniform re-encoding removes PNG-vs-JPEG bias) |
+| Real class | ImageNet "nature" photographs (the dataset card's label) |
+| Generators | ADM, BigGAN, GLIDE, Midjourney, Stable Diffusion V1.5, VQDM |
+| Licence | The card declares no tag. It is a derivative of GenImage, so **CC BY-NC-SA 4.0** (academic, non-commercial) is inherited. Preprocessing is third-party. |
+| Protocol | BigGAN and Midjourney held out entirely; report per-generator and cross-generator metrics |
 
-Both licences allow academic research/teaching and forbid commercial use. A
-download needs explicit approval because of size (and RAISE-1k needs its own
-licence check). **Do not download either dataset without that approval.**
+The local copy lives in `datasets/`, which is git-ignored. To reproduce on Colab:
 
-### 4.1 Expected layout after approval
-
-```text
-synthbuster/
-├── real/                       # RAISE-1k photographs (approved source)
-└── ai/
-    ├── DALL-E_2/
-    ├── DALL-E_3/
-    ├── Adobe_Firefly/
-    ├── Midjourney_v5/
-    ├── SD_1.3/
-    ├── SD_1.4/
-    ├── SD_2/
-    ├── SDXL/
-    └── GLIDE/
+```bash
+mkdir -p /content/mvss_data/genimage_processed
+curl -L -o /content/mvss_data/genimage_processed/metadata.parquet \
+  https://huggingface.co/datasets/Qwerty0193/genimage-processed/resolve/main/metadata.parquet
+curl -L -o /content/mvss_data/genimage_processed/processed_images.zip \
+  https://huggingface.co/datasets/Qwerty0193/genimage-processed/resolve/main/processed_images.zip
+cd /content/mvss_data/genimage_processed && unzip -q processed_images.zip -d images
+cd /content/DigitalImageForensics
+python training/prepare_module2_dataset.py \
+  --source /content/mvss_data/genimage_processed/images \
+  --output /content/mvss_data/genimage_processed/prepared
 ```
 
-### 4.2 Train with held-out generators
+`prepare_module2_dataset.py` flattens real images and groups AI images by generator; it
+hardlinks when the filesystem allows and never modifies the extracted files. Add
+`--smoke` for a 200-real / 100-per-generator pipeline check.
+
+### 4.1 Train with two generators held out
 
 ```bash
 python training/train_ai_detector.py \
-  --real-dir /content/drive/MyDrive/mvss/data/synthbuster/real \
-  --ai-dir /content/drive/MyDrive/mvss/data/synthbuster/ai \
-  --output-dir /content/drive/MyDrive/mvss/experiments/module2/synthbuster_v1 \
-  --holdout-generators "Midjourney_v5,DALL-E_3" \
-  --backbone efficientnet_b0 --pretrained \
-  --input-size 224 --epochs 15 --batch-size 32 \
-  --device cuda --dataset-name Synthbuster --dataset-license "CC BY-NC-SA 4.0" \
-  --provenance "Zenodo 10.5281/zenodo.10066460; real images RAISE-1k"
+  --real-dir /content/mvss_data/genimage_processed/prepared/real \
+  --ai-dir /content/mvss_data/genimage_processed/prepared/ai \
+  --output-dir /content/drive/MyDrive/mvss/experiments/module2/genimage_resnet18 \
+  --holdout-generators "BigGAN,Midjourney" \
+  --backbone resnet18 --pretrained \
+  --input-size 192 --epochs 4 --batch-size 32 --learning-rate 3e-4 \
+  --device cuda \
+  --dataset-name "GenImage-processed (Tiny-GenImage derivative)" \
+  --dataset-license "CC BY-NC-SA 4.0 (inherited from GenImage; card does not declare a tag)" \
+  --provenance "Hugging Face Qwerty0193/genimage-processed; 224x224 JPEG Q96; real class = ImageNet nature photographs; BigGAN and Midjourney held out"
 ```
 
-`--holdout-generators` removes entire generators from train/validation and puts
-them in the test set, which is the only way to make a cross-generator claim.
-Without it, the test metrics are in-distribution only.
+`--holdout-generators` removes entire generators from train/validation and puts them in
+the test set, which is the only way to make a cross-generator claim. Without it, test
+metrics are in-distribution only. The harness re-splits the remaining images 70/15/15
+with seed 42; the dataset's own `split` column is not used.
 
-Resume with:
+Resume with `--resume .../last.pt`.
 
-```bash
-  --resume /content/drive/MyDrive/mvss/experiments/module2/synthbuster_v1/last.pt
-```
+Outputs: `best.pt`, `last.pt`, `detector.ts`, `manifest.json`, `metrics.json`, `split.csv`,
+`training_log.csv`. `metrics.json` contains `validation`, `test`, `per_generator_test` and
+`history`; quote the held-out-generator rows, not only the mixed `test` row.
 
-Outputs: `best.pt`, `detector.ts`, `manifest.json`, `metrics.json`,
-`split.csv`, `training_log.csv`.
-
-### 4.3 Independent evaluation
+### 4.2 Independent evaluation and integration
 
 ```bash
 python evaluation/evaluate_module2.py \
-  --real-dir /content/drive/MyDrive/mvss/data/synthbuster/real \
-  --ai-dir /content/drive/MyDrive/mvss/data/synthbuster/ai \
-  --manifest /content/drive/MyDrive/mvss/experiments/module2/synthbuster_v1/manifest.json \
-  --output results/evaluation/module2_synthbuster_metrics.json
+  --real-dir /content/mvss_data/genimage_processed/prepared/real \
+  --ai-dir /content/mvss_data/genimage_processed/prepared/ai \
+  --manifest /content/drive/MyDrive/mvss/experiments/module2/genimage_resnet18/manifest.json \
+  --output results/evaluation/module2_genimage_metrics.json
 ```
 
-Only after `manifest.json` points at a real exported `detector.ts` should the
-application be switched from `unavailable` to ready. Do not edit
-`models/ai_detector/manifest.json` by hand with placeholder metrics. The
-evaluation script reads the supplied manifest; it does not accept a raw weights
-path.
+Copy `detector.ts` and `manifest.json` into `models/ai_detector/` to switch the app from
+`Integration placeholder` to `Detector integrated`. Never hand-edit metrics into a
+manifest; they are written by the training run.
+
+> **Licence caveat for reports.** CC BY-NC-SA 4.0 is academic/non-commercial. The real
+> class is ImageNet "nature" photographs, so the numbers describe this preprocessing and
+> class, not every photograph or every generator.
 
 ---
 

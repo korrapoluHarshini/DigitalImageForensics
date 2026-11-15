@@ -11,12 +11,13 @@ what to click, what to say, and which claims are honest. The long reference is
 
 > The system is a Streamlit application that integrates three forensic modules.
 > Module 1 localises image manipulation with MVSS-Net and classifies the whole image as
-> Authentic, Tampered or Uncertain. Module 2 is an AI-generated-image detector whose
-> training/evaluation harness is finished, but which honestly reports **unavailable**
-> because no licensed dataset and trained checkpoint exist yet. Module 3 screens chat
-> screenshots with OCR and, when a trusted original screenshot is supplied, highlights
-> visible pixel and text differences. Every displayed number comes from a recorded run;
-> unavailable evidence is labelled unavailable rather than invented.
+> Authentic, Tampered or Uncertain. Module 2 is an AI-generated-image detector trained on
+> GenImage-processed (ResNet-18, 192 px) that reports real, AI-generated or uncertain; a
+> BigGAN/Midjourney held-out test shows uneven cross-generator transfer (AUC 0.983 vs
+> 0.746). Module 3 screens chat screenshots with OCR and, when a trusted original
+> screenshot is supplied, highlights visible pixel and text differences. Every displayed
+> number comes from a recorded run; unavailable evidence is labelled unavailable rather
+> than invented.
 
 ---
 
@@ -82,7 +83,7 @@ localisation demo clearer; create one with:
 **Click:** `Home Dashboard`.
 
 **Say:** “The app has six pages. The sidebar shows live module status: MVSS-Net ready,
-AI detector unavailable, OCR ready. Status is read from the filesystem, not hard-coded.”
+AI detector integrated, OCR ready. Status is read from the filesystem, not hard-coded.”
 
 Point at the status rows. If OCR is missing, say the reference comparison still runs but
 text-change comparison is reported as degraded.
@@ -123,19 +124,25 @@ Do not claim a fixed accuracy percentage for an arbitrary uploaded photo.
 
 **Click:** `AI-Generated Image Detection`.
 
-**Say:** “This page is deliberately honest: no detector manifest is integrated, so it
-shows **unavailable** and produces no score. The training/export harness is complete and
-tested on synthetic folders, but real training needs a licensed dataset.”
+**Say:** “The sidebar says the detector is integrated. This module loads a ResNet-18
+TorchScript model and returns real, AI-generated or uncertain. It abstains when the top
+probability is below 0.60 or the class margin is below 0.20, so it does not force a label.”
+
+1. Upload a known generated image and read the probability card.
+2. Upload an authentic photograph and compare the result.
+3. Point out the abstention state if the model is not confident.
 
 Facts to quote:
 
-* **Synthbuster** — 12.37 GB, CC BY-NC-SA 4.0 (non-commercial), 9 generators × 1,000
-  images, **no real photos**.
-* A matched real class (RAISE-1k, non-commercial, tens of GB) is still needed.
-* The planned protocol holds whole generators out, so cross-generator performance can be
-  reported honestly.
+* Trained on 30,000 GenImage-processed images (15,000 real / 15,000 AI, six generators);
+  **BigGAN and Midjourney were held out entirely**.
+* Validation AUC **0.9718** on seen generators; test AUC **0.8888** across all generators.
+* Held-out **BigGAN AUC 0.983**, but held-out **Midjourney AUC 0.746** (recall 0.289).
+  Cross-generator transfer is uneven; do not quote only the best number.
+* The decision threshold is fixed at **0.5** and was not tuned on test data.
 
-**Say:** “I did not fake a prediction to make the demo look complete.”
+**Say:** “The model is real and the numbers are recorded, but one dataset and four CPU
+epochs are not a universal detector. Midjourney is the honest failure case.”
 
 ### 3:30–5:00 — Module 3: Chat Screenshot Analysis
 
@@ -165,8 +172,8 @@ OCR fragments; a 50% rescale drops recall to 0.7. Region recall remains 1.0.
 ### 5:00 — Close
 
 **Say:** “Module 1 is measured with an explicit leakage caveat and a leakage-free
-retraining pipeline. Module 2 is unavailable by design until a licensed dataset is
-approved. Module 3 is strongest when a trusted reference exists, and all its current
+retraining pipeline. Module 2 is integrated, with a documented held-out-generator gap on
+Midjourney. Module 3 is strongest when a trusted reference exists, and all its current
 numbers are synthetic.”
 
 ---
@@ -189,9 +196,10 @@ numbers are synthetic.”
 ## 4. Likely questions and honest answers
 
 **“Is the AI-image module working?”**
-“The integration and training harness work and are unit-tested. The detector itself is
-not trained, so the app reports unavailable. Training requires a licensed dataset; the
-smallest route is Synthbuster at 12.37 GB under CC BY-NC-SA 4.0, plus a real-photo class.”
+“Yes. A ResNet-18 detector is integrated and returns real / AI-generated / uncertain. It
+was trained on GenImage-processed with BigGAN and Midjourney held out. BigGAN transferred
+well (AUC 0.983) but Midjourney did not (AUC 0.746, recall 0.289), so it is a demo-grade
+detector, not a universal one.”
 
 **“Why not use the CASIA authentic images as the real class?”**
 “It is possible, but CASIA photos are a weak domain match for generated images and the
@@ -232,7 +240,8 @@ Re-rendering, app versions, compression and OCR errors are not represented.”
 ## 6. Claims to avoid
 
 * Do not call the old CASIA test metrics leakage-free.
-* Do not quote Module 2 accuracy, AUC or “detects Midjourney” claims.
+* Do not claim Module 2 works on all generators. Quote the held-out gap: BigGAN AUC 0.983,
+  Midjourney AUC 0.746.
 * Do not present synthetic Module 3 results as real-world accuracy.
 * Do not say the system authenticates an image’s origin or proves legal authenticity.
 * Do not say “Uncertain” means the image is safe — it means the score is too close to the

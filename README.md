@@ -9,12 +9,13 @@ notebook.
 | Module | What it does | Status | Evidence |
 | --- | --- | --- | --- |
 | **1. Image manipulation** | MVSS-Net localisation + Authentic / Tampered / Uncertain image decision | **Ready** | Original checkpoint measured with a leakage caveat; group-aware retraining runs in the Colab notebook |
-| **2. AI-generated image** | Pluggable detector with a TorchScript backend | **Pending / unavailable** | Harness and tests only; no licensed dataset, trained checkpoint or metrics |
+| **2. AI-generated image** | Pluggable detector with a TorchScript backend | **Integrated (local weights)** | ResNet-18 on GenImage-processed; held-out-generator test AUC 0.983 (BigGAN) / 0.746 (Midjourney); see `EVALUATION_REPORT.md` |
 | **3. Chat screenshot** | Visual screening, OCR and optional trusted-reference comparison | **Ready** (screening; reference comparison for visible differences) | Measured on locally generated synthetic screenshots only |
 
 Honesty rules enforced by the project:
 
-* Module 2 shows **unavailable** instead of inventing a prediction.
+* Module 2 abstains (**uncertain**) when confidence or class margin is low, and never
+  invents a prediction.
 * Module 3 never claims real-world accuracy from synthetic renders, and never claims to
   recover the original conversation without a trusted reference.
 * Module 1 thresholds (**0.40** pixel, **0.42** image, **±0.13** uncertainty) were selected
@@ -62,6 +63,8 @@ out-of-memory error does not restart training.
 * **Application reference:** [`docs/APPLICATION.md`](docs/APPLICATION.md) — architecture,
   thresholds, environment variables, privacy rules and troubleshooting.
 * **Measured results and caveats:** [`docs/EVALUATION_REPORT.md`](docs/EVALUATION_REPORT.md).
+* **Module 2 dataset evidence:** [`docs/DATASET_MODULE2.md`](docs/DATASET_MODULE2.md) —
+  provenance, hashes, composition, licence and the cross-generator holdout protocol.
 * **GPU details and manual commands:** [`docs/COLAB_RUNBOOK.md`](docs/COLAB_RUNBOOK.md).
 * **Module 2 integration contract:** [`models/ai_detector/README.md`](models/ai_detector/README.md).
 
@@ -71,7 +74,7 @@ out-of-memory error does not restart training.
 .\mvss_venv\Scripts\python.exe -m pytest tests -q
 ```
 
-Expected on the current machine: **172 passed, 2 skipped** (both skips need symlink
+Expected on the current machine: **177 passed, 2 skipped** (both skips need symlink
 permission; the notebook exercises those paths on Linux).
 
 ## Verification log (14 Nov 2026)
@@ -84,8 +87,10 @@ permission; the notebook exercises those paths on Linux).
 | Module 1 CPU smoke + resume | 1 epoch on 4 train / 3 validation images; resumed epoch keeps LR `5e-06` and accepts a batch-size change |
 | Module 1 test evaluation plumbing | `--smoke` run on held-out test rows exits 0 and labels itself sampled/non-quotable |
 | Module 3 synthetic reference comparison | 8 pairs: text precision/recall 1.0, region recall 1.0, pixel IoU 0.180, authentic-pair FPR 0.0 |
+| Module 2 training (CPU, 4 epochs) | 17,500 train / 3,750 validation / 8,750 test; validation AUC **0.9718**; held-out-generator test AUC **0.983** (BigGAN) and **0.746** (Midjourney); weights installed in `models/ai_detector/` |
+| Streamlit Arrow serialization | About-page evaluation table serializes without the mixed int/str Arrow warning; regression test added |
 | Upload handling | valid images reach the decision card; invalid bytes show `Upload rejected`; uploader reports 25 MB |
-| Full test suite | **172 passed, 2 skipped** |
+| Full test suite | **177 passed, 2 skipped** |
 
 Full-split Module 1 GPU training and its held-out metrics are still produced only by the
 Colab notebook; no GPU is available on this machine.

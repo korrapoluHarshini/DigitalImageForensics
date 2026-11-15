@@ -1,16 +1,18 @@
-# AI-generated image detector — integration placeholder
+# AI-generated image detector — integration contract
 
-This folder is intentionally empty of model weights. The application does **not**
-ship an AI-generated-image classifier, and Module 2 will show an explicit
-"not integrated" panel rather than a fake prediction.
+This folder holds the integrated Module 2 detector: `detector.ts` (ResNet-18,
+192 px) and `manifest.json`. The manifest is the source of truth; the app reads
+it at startup and reports “Detector integrated”. If the manifest or model file is
+removed, Module 2 shows an explicit integration placeholder and produces no
+scores.
 
-## How another team member can plug in a model
+## Replacing or plugging in another model
 
 1. Put the model file in this folder (for example `detector.ts` or `detector.onnx`).
-2. Copy `manifest.example.json` to `manifest.json`.
+2. Copy `manifest.example.json` to `manifest.json` (or edit the existing one).
 3. Edit the fields to match the supplied model.
 4. Restart the Streamlit app. The sidebar will change from
-   "not integrated" to "ready".
+   “not integrated” to “Detector integrated”.
 
 Supported backend kinds:
 
